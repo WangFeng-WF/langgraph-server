@@ -1,0 +1,13 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "agent": {"path": "./src/agent/graph.py:graph","description": "Agent Graph"},
+    "procedure-agent": {"path": "./src/procedure-agent/graph.py:graph","description": "Procedure Agent Graph"}
+  },
+  "auth": {
+    "path": "./src/agent/auth.py:auth"
+  },
+  "env": ".env",
+  "image_distro": "wolfi",
+  "pip_config_file": "./pipconf.txt"
+}
