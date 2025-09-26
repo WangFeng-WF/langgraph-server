@@ -64,15 +64,15 @@ class AiPromptSave(BaseModel):
         if self.title:
             fields.append("title")
             values.append(f"'{self.title}'")
-        if self.instruction:
-            fields.append("instruction")
-            values.append(f"'{self.instruction}'")
         if self.type:
             fields.append("type")
             values.append(f"'{self.type}'")
         if self.fields:
             fields.append("fields")
             values.append(f"'{self.fields}'")
+        if self.instruction:
+            fields.append("instruction")
+            values.append(f"'{self.instruction}'")
         if self.inputs:
             fields.append("inputs")
             values.append(f"'{self.inputs}'")
@@ -101,12 +101,12 @@ class AiPromptSave(BaseModel):
 
         updates = []
 
-        if self.instruction:
-            updates.append(f"instruction = '{self.instruction}'")
         if self.type:
             updates.append(f"type = '{self.type}'")
         if self.fields:
             updates.append(f"fields = '{self.fields}'")
+        if self.instruction:
+            updates.append(f"instruction = '{self.instruction}'")
         if self.inputs:
             updates.append(f"inputs = '{self.inputs}'")
         if self.sql_example:
@@ -304,7 +304,23 @@ async def execute_sql_with_mcp(sql: str) -> Dict[str, Any]:
             "error_type": type(e).__name__
         }
 
-async def save_or_update_prompts(ai_prompt: AiPromptSave) -> Dict[str, Any]:
+
+# title: Optional[str] = Field(None, description="指标/提示词标题")
+#     type: Optional[str] = Field(None, description="指标类型")
+#     fields: Optional[str] = Field(None, description="业务域")
+#     instruction: Optional[str] = Field(None, description="用法说明")
+#     inputs: Optional[str] = Field(None, description="输入参数示例")
+#     sql_example: Optional[str] = Field(None, description="SQL示例")
+async def save_or_update_prompts(
+                                 title: Optional[str] = None,
+                                 type: Optional[str] = None,
+                                 fields: Optional[str] = None,
+                                 instruction: Optional[str] = None,
+                                 inputs: Optional[str] = None,
+                                 sql_example: Optional[str] = None,
+                                 creator: Optional[str] = "system",
+                                 organization: Optional[str] = None,
+                                 user: Optional[str] = None) -> Dict[str, Any]:
     """
     使用结构化输出的保存或更新函数
 
@@ -319,6 +335,18 @@ async def save_or_update_prompts(ai_prompt: AiPromptSave) -> Dict[str, Any]:
 
         # # 步骤1: 使用大模型解析参数到结构化输出
         # ai_prompt = await parse_prompts_to_structured_output(prompts_info)
+
+        ai_prompt = AiPromptSave(
+            title=title,
+            type=type,
+            fields=fields,
+            instruction=instruction,
+            inputs=inputs,
+            sql_example=sql_example,
+            creator=creator,
+            organization=organization,
+            user=user
+        )
 
         # 步骤2: 检查是否存在相同的提示词
         check_result = await check_prompt_exists(ai_prompt)

@@ -1,11 +1,10 @@
 # -*- coding: utf-8 -*-
 # manufacturing_agent.py
 
-import asyncio
 import os
 import sys
 import uuid
-from typing import Any, Dict, List, Coroutine
+from typing import Any, Coroutine
 
 from typing_extensions import List, Dict, Optional, TypedDict
 from langchain_core.pydantic_v1 import BaseModel, Field
@@ -17,7 +16,6 @@ from dotenv import load_dotenv
 from langchain_core.messages import BaseMessage, HumanMessage, ToolMessage, AIMessage
 from langchain_core.tools import tool
 from langgraph.graph import StateGraph, END
-from langgraph.checkpoint.memory import MemorySaver
 from langchain_core.runnables import RunnableConfig
 from src.tools.dashscope import ChatDashscope
 
@@ -25,6 +23,7 @@ from src.tools.promptsQueryFromPrivate import query_private_prompts
 from src.tools.promptsQueryFromCloud import query_cloud_prompts
 from src.tools.saveOrUpdatePrompts import save_or_update_prompts
 import logging
+import asyncio
 
 # 在程序开始时配置一次
 logging.basicConfig(
@@ -97,6 +96,50 @@ SYSTEM_PROMPT_TEMPLATE_STEP = """你是「制造业指标分析卡片助手」�
 - **用户输入优先**: 如果用户的最新输入 (`{user_input}`) 已经提供了明确的内容（例如“用这个定义：XXX”），你可以直接使用用户提供的内容，并调用 `save_or_update_prompt` 工具进行保存，然后推进到下一步。
 """
 
+# 【新增】专门为第四步设计的提示词模板
+SYSTEM_PROMPT_TEMPLATE_STEP_4 = """你是「制造业指标分析卡片创建助手」，一个拥有深厚制造业知识、数据分析能力和商业智能（BI）实践经验的专家。
+# 1. 指标卡片配置流程
+你当前处于整个流程最关键的一步：定义数据来源与计算逻辑。
+
+# 2. 当前上下文
+- 指标名称: '{indicator_name}'
+- 业务域: '{business_domain}'
+- 当前步骤: 第 4 步 - 数据来源
+- 已完成步骤信息:
+  - 指标定义/计算公式 (第2步): '{step2_output}'
+  - 分析维度 (第3步): '{step3_output}'
+- 用户的最新输入: '{user_input}'
+
+# 3. 你的核心任务：智能推荐数据源并生成示例SQL
+你必须严格遵循以下决策流程：
+
+**第一步：分析上下文 (MANDATORY)**
+- **行动**: 回顾并深入理解第2步的「计算公式」和第3步的「分析维度」，提取计算指标所需的核心**度量**（如：产量、工时、不良品数）和**维度**（如：产品线、车间、时间、班次）。
+
+**第二步：获取表和字段推荐 (MANDATORY)**
+- **行动**: 基于上一步提取的度量和维度，调用 `get_table_and_field_info` 工具来获取最相关的数据表和字段建议。
+- **参数**:
+  - `indicator_name`: '{indicator_name}'
+  - `formula`: '{step2_output}'  // 将第2步的输出作为 formula 参数
+  - `dimensions`: '{step3_output}' // 将第3步的输出作为 dimensions 参数
+- **目的**: 获取用于构建数据来源和SQL的候选数据结构，确保推荐的专业性和准确性。
+
+**第三步：决策与响应**
+- **如果工具调用成功 (`success: True`)**:
+  - **任务**: 利用工具返回的内容，生成包含两部分内容的专业建议：**数据来源**和**SQL示例**。
+  - **行动**:
+    1.  **生成「数据来源」**: 清晰地描述数据来源于哪些表，并说明关键字段的业务含义。
+    2.  **生成「SQL示例」**: 编写一段高质量、可读性强的SQL查询代码，该SQL必须能体现计算逻辑，并包含分析维度。
+    3.  **呈现给用户**: 将上述两部分内容整合后，清晰地呈现给用户，并询问他们是否接受。
+  - **示例**: "根据您定义的指标和分析视角，我推荐以下数据源和计算逻辑：...（此处省略示例）...请问这个版本是否符合您的要求？"
+
+- **如果工具调用失败 (`success: False`)**:
+  - **任务**: 基于你对制造业数据模型的通用理解，独立生成数据来源和SQL示例。
+  - **行动**:
+    1.  **创建假设**: 明确告知用户，由于无法自动推荐，你将基于行业通用数据模型进行设计。
+    2.  **生成内容**: 按照上述成功情况下的格式，生成「数据来源」和「SQL示例」。
+    3.  **呈现给用户**: 向用户清晰地说明这是系统生成的通用建议，并请求他们确认或提供其真实环境的表名和字段名。
+"""
 
 # 【优化】将 AgentState 移到顶部，因为它被多个函数引用
 class AgentState(TypedDict):
@@ -206,7 +249,6 @@ def get_report_prompt(indicator_name: str, indicator_type: str, business_domain:
         "error": "私有库和云端均未查到相关提示词"
     }
 
-from src.tools.saveOrUpdatePrompts import AiPromptSave
 
 # 为 save_or_update_prompt 工具定义输入模型
 class SaveOrUpdatePromptArgs(BaseModel):
@@ -225,6 +267,27 @@ def save_or_update_prompt(step: int, prompt_object: SaveOrUpdatePromptArgs) -> d
 
     # 打印prompt_object对象
     logger.info(f"参数: step={step}, prompt_object={prompt_object}")
+    # 参数值类似：step=1, prompt_object=title='生产计划达成率（周）' type='名词定义' fields='生产' instruction='生
+    # 计划达成率是衡量企业实际生产完成情况与计划目标匹配程度的指标，用于评估生产系统的执行效率和可控性。' inputs='' sql_example=''
+    title = prompt_object.title or ""
+    type = prompt_object.type or ""
+    fields = prompt_object.fields or ""
+    instruction = prompt_object.instruction or ""
+    inputs = prompt_object.inputs or ""
+    sql_example = prompt_object.sql_example or ""
+
+    # 执行保存或更新逻辑
+    result = asyncio.run(save_or_update_prompts(title, type, fields, instruction, inputs, sql_example))
+
+    if not result.get("success"):
+        return {
+            "success": False,
+            "message": f"第 {step} 步的数据保存失败: {result.get('error', '未知错误')}",
+            "control": {
+                "next_step": step,  # 保持在当前步骤
+                "final_message": None
+            }
+        }
 
     next_step = step + 1
     final_message = "✅ 所有8个步骤已全部完成！感谢您的使用。" if next_step > 8 else None
@@ -240,13 +303,37 @@ def save_or_update_prompt(step: int, prompt_object: SaveOrUpdatePromptArgs) -> d
 
 @tool
 def get_table_and_field_info(indicator_name: str, formula: str = "", dimensions: str = "") -> dict:
-    """根据指标名称、计算公式和分析维度，查询并推荐相关的数据库表和字段。"""
-    logger.info(f"\n--- 正在调用工具 [get_table_and_field_info] ---")
-    logger.info(f"参数: indicator_name='{indicator_name}'")
-    return {"success": True, "recommended_tables": [
-        {"table_name": "t_prod_order_item", "reason": "包含计划产量(PlanQty)和实际产量(ActualQty)"}],
-            "recommendation_reason": "建议使用 t_prod_order_item 表进行分析。"}
+    """
+    根据指标名称、计算公式和分析维度，查询并推荐相关的数据库表和字段。
+    """
+    import asyncio
 
+    logger.info(f"\n--- 正在调用工具 [get_table_and_field_info] ---")
+    logger.info(f"参数: indicator_name='{indicator_name}', formula='{formula}', dimensions='{dimensions}'")
+
+    # 构造推荐参数
+    prompt_info = f"指标名称: {indicator_name}\n计算公式: {formula}\n分析维度: {dimensions}"
+    state = {
+        "prompt_info": prompt_info,
+        "all_table_comments": get_all_table_comments_tool
+    }
+
+    # 异步调用推荐函数
+    result = asyncio.run(recommend_tables_node(state))
+
+    # 解析结果
+    if result.get("success"):
+        return {
+            "success": True,
+            "recommended_tables": result.get("recommended_tables", []),
+            "recommendation_reason": result.get("recommendation_analysis", "")
+        }
+    else:
+        return {
+            "success": False,
+            "recommended_tables": [],
+            "recommendation_reason": result.get("error", "未能推荐相关表和字段")
+        }
 
 @tool
 def generate_sql(natural_language_prompt: str, indicator_name: str, step: int) -> dict:
@@ -288,8 +375,26 @@ def get_system_prompt(state: AgentState) -> str:
     if step == 0:
         return SYSTEM_PROMPT_TEMPLATE_START
 
+    # 【MODIFIED】当进入第四步时，使用专用的、更强大的提示词模板
+    if step == 4:
+        logger.info("当前是第4步，生成专用的数据来源提示词。")
+        card_data = state.get("card_data", {})
+
+        # 从 card_data 中获取第2步和第3步的输出，如果不存在则提供默认值
+        # 注意：这里的键（如'instruction'）取决于您在 card_data 中存储的格式
+        step2_output = card_data.get(2, {}).get('instruction', '未提供')
+        step3_output = card_data.get(3, {}).get('instruction', '未提供')
+
+        return SYSTEM_PROMPT_TEMPLATE_STEP_4.format(
+            indicator_name=state.get("indicator_name", "未指定"),
+            business_domain=state.get("business_domain", "未指定"),
+            step2_output=step2_output,
+            step3_output=step3_output,
+            user_input=state.get('user_input', '')
+        )
+
+    # 对于其他步骤，使用通用模板
     step_name = AppConfig.STEP_MAP.get(step, "未知")
-    # {state['user_input']}
     logger.info(f"生成系统提示: 当前步骤 {step} - {step_name}")
     return SYSTEM_PROMPT_TEMPLATE_STEP.format(
         indicator_name=state.get("indicator_name", "未指定"),
@@ -408,6 +513,16 @@ async def _handle_flow_start(state: AgentState) -> AgentState:
     logger.info(f"操作类型: 新增/修改指标, 指标名称: '{indicator_name}', 业务域: '{business_domain}'")
     return state
 
+from src.tools.tableInfoQuery import recommend_tables_node, get_all_table_comments_tool
+
+# 专门的函数来调用推荐表和字段的工具
+async def get_table_recommendation(prompt_info: str):
+    state = {
+        "prompt_info": prompt_info,
+        "all_table_comments": get_all_table_comments_tool
+    }
+    result = await recommend_tables_node(state)
+    return result.get("recommendation_analysis")
 
 async def agent_node(state: AgentState, config: RunnableConfig) -> Coroutine[Any, Any, AgentState] | dict:
     """
@@ -508,6 +623,8 @@ async def tool_node(state: AgentState) -> AgentState:
         return state
 
     all_tool_messages = []
+    current_step = state.get("current_step", 0) # 获取当前步骤
+
     for tool_call in last_message.tool_calls:
         tool_name = tool_call["name"]
         tool_call_id = tool_call["id"]
@@ -519,6 +636,22 @@ async def tool_node(state: AgentState) -> AgentState:
             error_message = f"找不到名为 {tool_name} 的工具"
             all_tool_messages.append(ToolMessage(content=error_message, tool_call_id=tool_call_id))
             continue
+
+        # 【新增】在调用 save_or_update_prompt 前，将数据存入 state
+        if tool_name == "save_or_update_prompt":
+            logger.info(f"检测到保存操作，正在将第 {current_step} 步的数据更新到 state['card_data']。")
+
+            # 从工具参数中提取需要保存的内容
+            # prompt_object 是 SaveOrUpdatePromptArgs 模型实例的字典表示
+            prompt_data_to_save = tool_params.get('prompt_object', {})
+
+            # 确保 card_data 存在
+            if 'card_data' not in state:
+                state['card_data'] = {}
+
+            # 将数据存入 card_data
+            state['card_data'][current_step] = prompt_data_to_save
+            logger.info(f"更新后的 card_data: {state['card_data']}")
 
         try:
             result = await asyncio.to_thread(
