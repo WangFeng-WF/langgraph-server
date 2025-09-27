@@ -188,13 +188,13 @@ async def recommend_tables_node(state: AgentState) -> Dict[str, Any]:
 
         if result and result.recommended_tables:
             logger.info(f"表推荐成功，推荐了 {len(result.recommended_tables)} 个表。推断领域: {result.inferred_domain}")
+            return {"success": True, "recommendation_analysis": result}
         else:
             logger.info("未能根据用户输入推荐任何表。")
-
-        return {"recommendation_analysis": result}
+            return {"success": False, "error_message": "未能根据用户输入推荐任何表"}
     except Exception as e:
         logger.error(f"节点 recommend_tables_node 失败: {e}", exc_info=True)
-        return {"error_message": f"大模型推荐表失败: {e}"}
+        return {"success": True, "error_message": f"大模型推荐表失败: {e}"}
 
 
 async def get_columns_node(state: AgentState) -> Dict[str, Any]:

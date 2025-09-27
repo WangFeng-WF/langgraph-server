@@ -307,32 +307,39 @@ def get_table_and_field_info(indicator_name: str, formula: str = "", dimensions:
     根据指标名称、计算公式和分析维度，查询并推荐相关的数据库表和字段。
     """
     import asyncio
+    from src.tools.tableInfoQuery import AgentState, get_columns_node
 
     logger.info(f"\n--- 正在调用工具 [get_table_and_field_info] ---")
     logger.info(f"参数: indicator_name='{indicator_name}', formula='{formula}', dimensions='{dimensions}'")
 
     # 构造推荐参数
     prompt_info = f"指标名称: {indicator_name}\n计算公式: {formula}\n分析维度: {dimensions}"
-    state = {
+
+    # 构造 AgentState 类型参数
+    state: AgentState = {
         "prompt_info": prompt_info,
-        "all_table_comments": get_all_table_comments_tool
+        "all_table_comments": asyncio.run(get_all_table_comments_tool.ainvoke({}))
     }
 
     # 异步调用推荐函数
     result = asyncio.run(recommend_tables_node(state))
-
-    # 解析结果
-    if result.get("success"):
+    logger.info(f"推荐结果: {result}")
+    analysis = result.get("recommendation_analysis")
+    if result.get("success") and analysis and analysis.recommended_tables:
+        # 获取字段信息
+        table_columns = asyncio.run(get_table_columns_tool.ainvoke({"tables": analysis.recommended_tables}))
         return {
             "success": True,
-            "recommended_tables": result.get("recommended_tables", []),
-            "recommendation_reason": result.get("recommendation_analysis", "")
+            "recommended_tables": analysis.recommended_tables,
+            "table_columns": table_columns,
+            "recommendation_reason": analysis.reason
         }
     else:
         return {
             "success": False,
             "recommended_tables": [],
-            "recommendation_reason": result.get("error", "未能推荐相关表和字段")
+            "table_columns": "",
+            "recommendation_reason": result.get("error_message", "未能推荐相关表和字段")
         }
 
 @tool
@@ -513,15 +520,25 @@ async def _handle_flow_start(state: AgentState) -> AgentState:
     logger.info(f"操作类型: 新增/修改指标, 指标名称: '{indicator_name}', 业务域: '{business_domain}'")
     return state
 
-from src.tools.tableInfoQuery import recommend_tables_node, get_all_table_comments_tool
+from src.tools.tableInfoQuery import recommend_tables_node, get_all_table_comments_tool, get_table_columns_tool
+
 
 # 专门的函数来调用推荐表和字段的工具
 async def get_table_recommendation(prompt_info: str):
-    state = {
+
+    from src.tools.tableInfoQuery import AgentState
+    # 构造 AgentState 类型参数
+    state: AgentState = {
         "prompt_info": prompt_info,
-        "all_table_comments": get_all_table_comments_tool
+        "all_table_comments": asyncio.run(get_all_table_comments_tool.ainvoke({}))
     }
+
+    # 调用推荐函数，参数信息为：
+    logger.info(f"调用推荐函数，参数信息为：{state}")
+
     result = await recommend_tables_node(state)
+
+    logger.info(f"推荐结果：{result}")
     return result.get("recommendation_analysis")
 
 async def agent_node(state: AgentState, config: RunnableConfig) -> Coroutine[Any, Any, AgentState] | dict:
