@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import os
-from typing import Any, Dict, List, TypedDict
+from typing_extensions import Any, Dict, List, TypedDict
 
 from langchain_community.chat_models import ChatTongyi
 from langchain_core.messages import AIMessage, HumanMessage, BaseMessage,SystemMessage
@@ -15,14 +15,14 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.graph import StateGraph
 from langgraph.runtime import Runtime
 #from langgraph.checkpoint.memory import MemorySaver
-from langgraph.checkpoint.postgres import PostgresSaver
+#from langgraph.checkpoint.postgres import PostgresSaver
 
 #from .config import Config
 
 
 class Context(TypedDict):
     """Context parameters for the agent.
-    
+
     Set these when creating assistants OR when invoking the graph.
     """
     dashscope_api_key: str
@@ -31,7 +31,7 @@ class Context(TypedDict):
 @dataclass
 class State:
     """Input state for the agent.
-    
+
     Defines the structure for chat messages and conversation history with context support.
     """
     messages: List[BaseMessage] = None  # 聊天消息历史列表
@@ -48,7 +48,7 @@ class State:
     thread_id: str = None               # 对话线程ID，用于多线程或多会话场景
     # 定义保存上下文信息
     history_messages: List[BaseMessage] = None
-    
+
     def __post_init__(self):
         if self.messages is None:
             self.messages = []
@@ -59,55 +59,55 @@ class State:
             self.context_data = {}
         if self.metadata is None:
             self.metadata = {}
-        
+
         # 如果没有设置系统提示词，使用默认的
         if self.system_prompt is None:
             self.system_prompt = "你是一个有用的AI助手，基于通义千问模型。请用中文回答用户的问题。"
-        
+
         # 如果没有会话ID，生成一个默认的
         if self.session_id is None:
             import uuid
             self.session_id = str(uuid.uuid4())
-        
+
         # 更新元数据
         self.metadata.update({
             "message_count": len(self.messages),
             "last_updated": None,  # 将在使用时更新
             "context_persisted": True  # 标记上下文已持久化
         })
-    
+
     def add_message(self, message: BaseMessage):
         """添加消息到对话历史并更新元数据"""
         self.messages.append(message)
         self.metadata["message_count"] = len(self.messages)
         from datetime import datetime
         self.metadata["last_updated"] = datetime.now().isoformat()
-    
+
     def get_context_summary(self) -> str:
         """获取上下文摘要，用于AI模型理解对话背景"""
         summary_parts = []
-        
+
         if self.user_id:
             summary_parts.append(f"用户ID: {self.user_id}")
-        
+
         if self.thread_id:
             summary_parts.append(f"对话线程: {self.thread_id}")
-        
+
         if self.session_id:
             summary_parts.append(f"会话ID: {self.session_id}")
-        
+
         if self.context_data:
             for key, value in self.context_data.items():
                 summary_parts.append(f"{key}: {value}")
-        
+
         return "; ".join(summary_parts) if summary_parts else "无特殊上下文"
-    
+
     def update_context(self, key: str, value: Any):
         """更新上下文数据"""
         self.context_data[key] = value
         from datetime import datetime
         self.metadata["last_updated"] = datetime.now().isoformat()
-    
+
     def clear_context(self):
         """清除上下文数据，但保留消息历史"""
         self.context_data.clear()
@@ -119,17 +119,17 @@ def create_chat_model() -> ChatTongyi:
     """Create and configure the Qwen chat model."""
     #if api_key is None:
     #    api_key = Config.get_api_key()
-    
+
     return ChatTongyi(
-        model="qwen-plus", 
+        model="qwen-plus",
         dashscope_api_key="sk-7c61b5435ea94666b3a50d4a0d889bd2"
- 
+
     )
 
 
 async def chat_with_context(state: State, runtime: Runtime[Context],config: RunnableConfig) -> Dict[str, Any]:
     """Process chat messages with context support.
-    
+
     This function:
     1. Gets the conversation history from state
     2. Uses the Qwen model to generate a response
@@ -140,11 +140,11 @@ async def chat_with_context(state: State, runtime: Runtime[Context],config: Runn
     #api_key = Config.get_api_key()
     #if runtime.context is not None:
     #    api_key = runtime.context.get('dashscope_api_key', api_key)
-    
+
     # 创建聊天模型
     chat_model = create_chat_model()
     #print(f"config: {config}")
-    
+
     # 从config中获取thread_id并更新到state中
     thread_id = config.get("configurable", {}).get("thread_id")
     if thread_id:
@@ -152,7 +152,7 @@ async def chat_with_context(state: State, runtime: Runtime[Context],config: Runn
     user_id = config.get("configurable", {}).get("user_id")
     if user_id:
         state.user_id = user_id
-    
+
     print(f"thread_id: {state.thread_id}")
     print(f"会话ID: {state.session_id}")
     print(f"用户ID user_id: {state.user_id}")
@@ -162,7 +162,7 @@ async def chat_with_context(state: State, runtime: Runtime[Context],config: Runn
         print("用户ID为空，终止执行。")
         state.messages.append(AIMessage(content="缺少用户ID，请URL中添加user_id参数。"))
         return {"messages": state.messages} """
-    
+
     #print(f"上下文摘要: {state.get_context_summary()}")
     #print(f"消息数量: {len(state.messages)}")
     # 获取用户输入
@@ -173,8 +173,8 @@ async def chat_with_context(state: State, runtime: Runtime[Context],config: Runn
     # 打印历史消息
     print(f"历史消息: {messages}")
 
-    
-    
+
+
     # 处理消息格式转换
     processed_messages = []
 
@@ -201,7 +201,7 @@ async def chat_with_context(state: State, runtime: Runtime[Context],config: Runn
             pass
         else:
             content = str(content)
-        
+
         if msg_type == 'human':
             print(f"human: {content}")
             processed_messages.append(HumanMessage(content=content,additional_kwargs={'userId': user_id}))
@@ -216,12 +216,12 @@ async def chat_with_context(state: State, runtime: Runtime[Context],config: Runn
         # 如果已经是LangChain消息对象，直接使用
         processed_messages.append(msg)
 
-    #state.messages.append(processed_messages)        
-    
+    #state.messages.append(processed_messages)
+
     print(f"处理后的消息数量: {len(processed_messages)}")
     """ for i, msg in enumerate(processed_messages):
         print(f"消息 {i}: {type(msg).__name__} - {msg.content[:50]}...") """
-    
+
     if not processed_messages:
         # 如果没有消息，返回欢迎信息
         welcome_message = AIMessage(
@@ -230,16 +230,16 @@ async def chat_with_context(state: State, runtime: Runtime[Context],config: Runn
         # 使用 add_message 方法添加消息并更新元数据
         state.add_message(welcome_message)
         return {"messages": state.messages}
-    
+
     # 构建包含系统提示词和上下文的消息列表
     # 增加系统提示词到上下文消息列表
-    
+
     if state.system_prompt:
         # 检查history_messages中是否已存在SystemMessage，避免重复添加
         has_system_message = any(isinstance(msg, SystemMessage) for msg in state.history_messages)
         if not has_system_message:
             state.history_messages.append(SystemMessage(content=state.system_prompt))
-    
+
     """ # 添加系统提示词
     if state.system_prompt:
         from langchain_core.messages import SystemMessage
@@ -255,7 +255,7 @@ async def chat_with_context(state: State, runtime: Runtime[Context],config: Runn
     context_messages.extend(processed_messages)
 
     print(f"context_messages: {context_messages}") """
-    
+
     # 获取最后一条用户消息
     last_message = processed_messages[-1]
     # 获取当前会话的消息历史
@@ -263,7 +263,7 @@ async def chat_with_context(state: State, runtime: Runtime[Context],config: Runn
     # 打印历史消息
     print(f"history_messages: {state.history_messages}")
     print(f"last_message: {last_message}")
-    
+
     if isinstance(last_message, HumanMessage):
         # 使用聊天模型生成回复
         try:
@@ -273,26 +273,26 @@ async def chat_with_context(state: State, runtime: Runtime[Context],config: Runn
             print("-----ai msg---------")
             #print(response)
             print(f"response.content: {response.content}")
-            
-            
+
+
             # 使用 add_message 方法添加AI回复并更新元数据
             state.add_message(AIMessage(content=response.content,additional_kwargs={'userId': state.user_id}))
             print(f"----state.messages: {state.messages}")
 
             state.history_messages.append(AIMessage(content=response.content,additional_kwargs={'userId': state.user_id}))
             print(f"----state.history_messages: {state.history_messages}")
-            
+
             # 返回完整的状态，包括上下文信息
             return {
                 "messages": state.messages,
                 "history_messages": state.history_messages,
                 "session_id": state.session_id,
-                "user_id": state.user_id,   # 添加用户ID    
+                "user_id": state.user_id,   # 添加用户ID
                 "thread_id": state.thread_id,
                 "context_data": state.context_data,
                 "metadata": state.metadata
             }
-            
+
         except Exception as e:
             # 处理错误情况
             print(f"调用AI模型时出错: {e}")
@@ -309,7 +309,7 @@ async def chat_with_context(state: State, runtime: Runtime[Context],config: Runn
                 "context_data": state.context_data,
                 "metadata": state.metadata
             }
-    
+
     # 如果不是用户消息，直接返回当前状态
     return {
         "messages": state.messages,
@@ -372,4 +372,4 @@ else:
             .add_node("chat_with_context", chat_with_context)
             .add_edge("__start__", "chat_with_context")
             .compile(name="Qwen Chat Agent")
-        ) """         
+        ) """
