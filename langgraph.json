@@ -3,7 +3,8 @@
   "graphs": {
     "agent": {"path": "./src/agent/graph.py:graph","description": "Agent Graph"},
     "procedure-agent": {"path": "./src/procedure-agent/graph.py:graph","description": "Procedure Agent Graph"},
-    "manufacturing-assistant": {"path": "./src/manufacturing-assistant/manufacturing_assistant.py:manufacturing_assistant","description": "Manufacturing Assistant Graph"}
+    "manufacturing-assistant": {"path": "./src/manufacturing-assistant/manufacturing_assistant.py:manufacturing_assistant","description": "Manufacturing Assistant Graph"},
+    "dbt-agent": {"path": "./src/dbt-core-agent/dbt_react_agent.py:analysis_agent_graph","description": "DBT Agent Graph"}
   },
   "auth": {
     "path": "./src/agent/auth.py:auth"

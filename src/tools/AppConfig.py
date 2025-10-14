@@ -1,14 +1,15 @@
 import os
+# -*- coding: utf-8 -*-
 
 
 class AppConfig:
-    ALLOWED_BUSINESS_DOMAINS = ["Éú²ú", "²É¹º", "ÏúÊÛ", "¹©Ó¦Á´"]
+    ALLOWED_BUSINESS_DOMAINS = ["ç”Ÿäº§", "é‡‡è´­", "é”€å”®", "ä¾›åº”é“¾"]
     LLM_API_KEY = os.getenv("DASHSCOPE_API_KEY", "sk-ca949c46e4904479927923a41562d4d3")
     LLM_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
     LLM_MODEL_NAME = "qwen-max-latest"
 
     STEP_MAP = {
-        1: "Ãû´Ê¶¨Òå", 2: "¼ÆËã¹«Ê½", 3: "·ÖÎöÎ¬¶ÈÓëÖ¸±ê", 4: "Êý¾ÝÀ´Ô´",
-        5: "Ö¸±ê¼ÆËã-½á¹û²éÑ¯SQL", 6: "Ã÷Ï¸¼ÆËã-ÊµÊ±¼ÆËãSQL",
-        7: "Ö¸±ê·ÖÎö·½·¨", 8: "Ã÷Ï¸·ÖÎö·½·¨"
+        1: "åè¯å®šä¹‰", 2: "è®¡ç®—å…¬å¼", 3: "åˆ†æžç»´åº¦ä¸ŽæŒ‡æ ‡", 4: "æ•°æ®æ¥æº",
+        5: "æŒ‡æ ‡è®¡ç®—-ç»“æžœæŸ¥è¯¢SQL", 6: "æ˜Žç»†è®¡ç®—-å®žæ—¶è®¡ç®—SQL",
+        7: "æŒ‡æ ‡åˆ†æžæ–¹æ³•", 8: "æ˜Žç»†åˆ†æžæ–¹æ³•"
     }

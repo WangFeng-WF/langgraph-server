@@ -1,0 +1,13 @@
+jaffle_shop:
+  target: dev
+  outputs:
+    dev:
+      type: postgres
+      host: 192.168.58.75
+      port: 5432
+      user: data_fenxi_user
+      password: hello123456
+      dbname: kotl_tool
+      schema: data_fenxi
+      threads: 4
+      keepalives_idle: 0

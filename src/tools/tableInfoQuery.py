@@ -196,6 +196,40 @@ async def recommend_tables_node(state: AgentState) -> Dict[str, Any]:
         logger.error(f"节点 recommend_tables_node 失败: {e}", exc_info=True)
         return {"success": True, "error_message": f"大模型推荐表失败: {e}"}
 
+def get_table_and_field_info2(prompt_info: str) -> dict:
+    """
+    根据指标名称、计算公式和分析维度，查询并推荐相关的数据库表和字段。
+    """
+
+    logger.info(f"\n--- 正在调用工具 [get_table_and_field_info2] ---")
+    logger.info(f"参数: prompt_info='{prompt_info}'")
+
+    # 构造 AgentState 类型参数
+    state: AgentState = {
+        "prompt_info": prompt_info,
+        "all_table_comments": asyncio.run(get_all_table_comments_tool.ainvoke({}))
+    }
+
+    # 异步调用推荐函数
+    result = asyncio.run(recommend_tables_node(state))
+    logger.info(f"推荐结果: {result}")
+    analysis = result.get("recommendation_analysis")
+    if result.get("success") and analysis and analysis.recommended_tables:
+        # 获取字段信息
+        table_columns = asyncio.run(get_table_columns_tool.ainvoke({"tables": analysis.recommended_tables}))
+        return {
+            "success": True,
+            "recommended_tables": analysis.recommended_tables,
+            "table_columns": table_columns,
+            "recommendation_reason": analysis.reason
+        }
+    else:
+        return {
+            "success": False,
+            "recommended_tables": [],
+            "table_columns": "",
+            "recommendation_reason": result.get("error_message", "未能推荐相关表和字段")
+        }
 
 async def get_columns_node(state: AgentState) -> Dict[str, Any]:
     """节点3: 获取推荐表的字段信息"""
