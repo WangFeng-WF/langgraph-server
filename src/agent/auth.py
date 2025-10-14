@@ -2,6 +2,9 @@ from langgraph_sdk import Auth
 
 auth = Auth()
 
+#1、实现多用户，要使用自定义鉴权@auth.authenticate。开发环境可以，生产环境不行，生产环境需要配置LANGGRAPH_CLOUD_LICENSE_KEY
+#	2、postgresql存储上下文。开发环境不可以，生产环境可以。
+
 @auth.authenticate
 async def authenticate(headers: dict) -> Auth.types.MinimalUserDict:
     #print(f"headers: {headers}")
@@ -24,6 +27,9 @@ async def authenticate(headers: dict) -> Auth.types.MinimalUserDict:
         "email": "user@example.com",
         # 其他自定义字段
     }
+#    鉴权后，在资源中添加用户ID 
+# 暂时注释掉 实现多用户，要使用自定义鉴权@auth.authenticate。开发环境可以，生产环境不行，生产环境需要配置LANGGRAPH_CLOUD_LICENSE_KEY
+
 """ @auth.on
 async def add_owner(
     ctx: Auth.types.AuthContext,
