@@ -190,6 +190,10 @@ def validate_report_logic(report_name: str) -> dict:
             error_details = f"STDOUT:\n{_filter_dbt_output(process.stdout)}\n\nSTDERR:\n{process.stderr}"
             return {"status": "Failed", "message": f"报告 '{report_name}' 的SQL验证失败。", "error_details": error_details}
     except Exception as e:
+        # 打印dbt项目路径，便于调试
+        logger.error(f"dbt项目路径: {ReportAgentConfig.DBT_PROJECT_PATH}")
+        # 打印完整的异常堆栈信息
+        logger.error(f"执行SQL验证时发生未知错误: {e}", exc_info=True)
         return {"status": "Failed", "message": f"执行SQL验证时发生未知错误: {e}"}
 
 def _filter_dbt_output(output: str) -> str:
@@ -322,20 +326,79 @@ llm = ChatDashscope(model=ReportAgentConfig.LLM_MODEL_NAME, api_key=ReportAgentC
 # ==============================================================================
 # 5. Agent 构建
 # ==============================================================================
+
+# 【新增函数】 检查并确保 manifest.json 存在，如果不存在则尝试生成
+def ensure_dbt_manifest():
+    """
+    检查 dbt manifest.json 是否存在。如果不存在，则尝试运行 'dbt compile' 来生成它。
+    如果生成失败，则打印错误并退出程序。
+    """
+    manifest_path = ReportAgentConfig.DBT_MANIFEST_PATH
+    project_path = ReportAgentConfig.DBT_PROJECT_PATH
+
+    if os.path.exists(manifest_path):
+        logger.info(f"系统元数据(manifest.json)已存在于: {manifest_path}")
+        return
+
+    logger.warning(f"系统元数据(manifest.json)未找到。将在 '{project_path}' 目录中尝试运行 'dbt compile' ...")
+
+    try:
+        command = ["dbt", "compile"]
+        env = os.environ.copy()
+        env['PYTHONIOENCODING'] = 'utf-8'
+        process = subprocess.run(
+            command,
+            cwd=project_path,
+            capture_output=True,
+            check=False,  # 我们将手动检查返回码
+            encoding='utf-8',
+            errors='replace',
+            env=env
+        )
+
+        if process.returncode == 0:
+            logger.info("✅ 'dbt compile' 成功执行，manifest.json 已生成。")
+        else:
+            # dbt 命令执行失败
+            logger.error("❌ 'dbt compile' 执行失败。无法初始化Agent。")
+            logger.error(f"返回码: {process.returncode}")
+            logger.error(f"--- dbt STDOUT ---\n{process.stdout}")
+            logger.error(f"--- dbt STDERR ---\n{process.stderr}")
+            logger.error("请检查您的dbt项目配置是否正确，或者手动运行 'dbt compile' 查看问题。")
+            sys.exit(1) # 关键：执行失败则直接退出
+
+    except FileNotFoundError:
+        logger.error("❌ 命令 'dbt' 未找到。请确保 dbt-core 已经安装并且在系统的 PATH 环境变量中。")
+        sys.exit(1)
+    except Exception as e:
+        logger.error(f"执行 'dbt compile' 时发生未知错误: {e}", exc_info=True)
+        sys.exit(1)
+
 def get_simplified_system_context(manifest_path: str) -> str:
     """从manifest.json中提取简化的、对LLM友好的上下文。"""
+    # 此时，我们已经确保了 manifest_path 文件是存在的
     try:
-        with open(manifest_path, 'r', encoding='utf-8') as f: manifest = json.load(f)
+        with open(manifest_path, 'r', encoding='utf-8') as f:
+            manifest = json.load(f)
+
         models = sorted(list(set(v['name'] for k, v in manifest.get("nodes", {}).items() if v['resource_type'] == 'model')))
         sources = sorted(list(set((v['source_name'], v['name']) for k, v in manifest.get("sources", {}).items())))
+
         context = {
             "existing_analysis_modules": models,
             "sources": [{"source_name": s[0], "table_name": s[1]} for s in sources]
         }
         return json.dumps(context, indent=2, ensure_ascii=False)
-    except Exception:
+    except (json.JSONDecodeError, KeyError) as e:
+        # 异常处理更具体，以防 manifest 文件内容损坏
+        logger.error(f"解析 manifest.json 时出错: {e}", exc_info=True)
         return "{}"
 
+# 【优化】在Agent构建之前，执行前置检查
+ensure_dbt_manifest()
+
+# 打印上下文提取路径
+logger.info(f"正在从路径提取系统上下文: {ReportAgentConfig.DBT_MANIFEST_PATH}")
 system_context = get_simplified_system_context(ReportAgentConfig.DBT_MANIFEST_PATH)
 logger.info(f"提取的系统上下文: {system_context}")
 

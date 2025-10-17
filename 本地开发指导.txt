@@ -1,0 +1,45 @@
+# 日常开发
+### 通过conda安装Python3.11
+创建Python3.11虚拟环境并激活
+conda create -n py311 python=3.11
+conda activate py311
+
+# 配置 Poetry 使用当前激活的环境
+poetry config virtualenvs.create false
+
+## 通过poetry安装项目依赖
+poetry install
+
+### 通过poetry运行项目
+poetry run langgraph dev
+
+# 其他命令
+
+### 指定端口运行项目
+poetry run langgraph dev --port 2026
+
+# 运行你的代码
+poetry run python your_script.py
+
+退出虚拟环境
+conda deactivate
+
+# 添加新的依赖，会自动更新pyproject.toml和poetry.lock
+poetry add xxx
+
+# 项目部署
+# 生成Dockerfile
+poetry run langgraph dockerfile -c langgraph.json Dockerfile
+
+# 修改Dockerfile中的配置（重要，不然构建会失败）
+删除了无效配置：您去掉了无用的 PIP_CONFIG_FILE=/pipconfig.txt。
+添加了有效配置：您换上了 uv 工具官方指定的环境变量 UV_INDEX_URL="https://pypi.tuna.tsinghua.edu.cn/simple"。
+
+# 构建Docker镜像
+docker build -t langgraph-app .
+# compose 运行Docker容器
+docker-compose up -d 或者 docker compose up -d
+# 查看日志
+docker-compose logs -f  或者 docker compose logs -f
+# 停止容器
+docker-compose down  或者 docker compose down
