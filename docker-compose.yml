@@ -35,7 +35,7 @@ services:
             langgraph-redis:
                 condition: service_healthy
             langgraph-postgres:
-              condition: service_healthy    
+              condition: service_healthy
         env_file:
             - .env
         environment:
@@ -43,3 +43,7 @@ services:
             DATABASE_URI: postgres://postgres:postgres@langgraph-postgres:5432/postgres?sslmode=disable
             LANGSMITH_API_KEY: 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
             #LANGGRAPH_CLOUD_LICENSE_KEY: ${LANGGRAPH_CLOUD_LICENSE_KEY}
+        volumes:
+            # 这里是实现数据持久化的关键！
+            # 格式是：[宿主机相对路径]:[容器内绝对路径]
+            - ./src/dbt-core-agent/dbt-core-project:/deps/langgraph-server/src/dbt-core-agent/dbt-core-project

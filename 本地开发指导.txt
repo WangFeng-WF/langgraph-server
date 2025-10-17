@@ -7,6 +7,9 @@ conda activate py311
 # 配置 Poetry 使用当前激活的环境
 poetry config virtualenvs.create false
 
+## windows本地安装Poetry
+pip install poetry
+
 ## 通过poetry安装项目依赖
 poetry install
 
